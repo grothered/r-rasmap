@@ -105,7 +105,7 @@ print('Burning storage areas into raster (progress bar can advance at a variable
 burn_rast=rasterize(ras_storage, burn_rast, sa_we, progress='text', update=FALSE)
 
 print(' Getting points from the raster which are in the channel polygon ...')
-chan_cells=extract(dem, ras_chan_polygon, cellnumber=TRUE, small=FALSE)
+chan_cells=extract(dem, ras_chan_polygon, cellnumber=TRUE, small=TRUE)
 
 library(rgeos)
 elev_fun<-function(coords, reachname){
@@ -139,7 +139,8 @@ elev_fun<-function(coords, reachname){
 
     reach_seg=over(points_t2, poly_t2)
 
-    # Treat rare NA values in reach_seg
+    # Treat rare NA values in reach_seg -- cells treated as outside by 'over',
+    # but inside by 'extract
     fixme=which(is.na(reach_seg))
     if(length(fixme)>0){
         reach_seg[fixme]=over(gBuffer(points_t2[fixme],width=sqrt(50.)/2.), poly_t2)
@@ -168,7 +169,7 @@ for(i in 1:length(chan_cells)){
     reach_name=reach_names[i]
     coords=xyFromCell(dem, chan_cells[[i]][,1])
     #burn_rast[chan_cells[[i]][,1]] = elev_fun(chan_cells[[i]][,1], reach_name)
-    rasterize(coords, burn_rast, elev_fun(coords, reach_name), update=TRUE)
+    burn_rast = rasterize(coords, burn_rast, elev_fun(coords, reach_name), update=TRUE)
     gc()
 }
 
