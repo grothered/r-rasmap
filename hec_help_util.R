@@ -768,7 +768,119 @@ make_channel_cutlines<-function(hec_chan_file, spatial_proj){
     return(output)
 }
 
-###########################################################################################################################################
+###################################################################
+create_junction_polygon<-function(hec_chan_file, channel_cutlines){
+    # Make polygon of the junctions. This is needed for RAS Mapper type
+    # plotting
+
+    #@ Read input file
+    fin=file(hec_chan_file, open='r')
+    hec_lines=readLines(fin)
+    close(fin)
+
+    # Indices associated with the start of each junction
+    junct_starts=grep('Junct Name=', hec_lines)
+    # Hack to find the indices of the end of each junction
+    junct_tmp=grep('Junc L&A',hec_lines)
+    junct_ends=junct_tmp[which(diff(junct_tmp)>1)] # The ones we want are followed by several non-matching lines
+    junct_ends=c(junct_ends, junct_tmp[length(junct_tmp)] ) 
+
+    if( length(junct_starts)!=length(junct_ends) || any(junct_starts > junct_ends) ){
+        stop('ERROR: Junction start/end indicies are not matching')   
+    }
+
+    # Get reach names for xsections
+    cutline_reachnames=substring(channel_cutlines@data$reach, 13, 13+32-1)
+
+    # Loop over every junction
+    junct_tmp_polys=list() # Useful work list for junction polygons
+    xsect_ind_store=rep(NA,length(junct_starts)) # This will hold the index of one xsection at the junction
+    xsect_orientation_store=rep(NA,length(junct_starts)) # This will hold 'Up' / 'Dn' info for one xsection on each junction
+    for(i in 1:length(junct_starts) ){
+
+        # Get text / names of reaches in this junction
+        junct_text=hec_lines[ junct_starts[i]:junct_ends[i] ]
+        joining_reaches=grep('River,Reach=', junct_text)
+        joining_reachnames=substring(junct_text[joining_reaches], 16, 16+32-1)
+
+        # Record Up / Dn information: Up=1, Dn=0
+        reach_orientation=joining_reaches*0    
+        reach_orientation[ grep('Up River,Reach', junct_text[joining_reaches]) ] = 1
+
+        # Get 'coordinates' of cutlines at junction
+        #browser()
+        coords=list()
+        xsect_ind=rep(0,length(joining_reaches))
+        for(j in 1:length(joining_reaches)){
+            tmp = which(cutline_reachnames==joining_reachnames[j])
+            # Downstream reach
+            if(reach_orientation[j]==0){
+                xsect_ind[j]=tmp[1]
+            }else{
+            # Upstream reach
+                xsect_ind[j]=tmp[length(tmp)]
+            }
+            
+            coords[[j]] = coordinates(channel_cutlines@lines[[ xsect_ind[j] ]])[[1]]
+            
+        }
+        # Loop over joining reaches, find 'up' reaches, connect with all 'down' reaches
+        # Then combine into a single polygon for each junction
+        counter=0
+        junct_tmp_poly=list()
+        for(j in 1:length(joining_reaches)){
+            if(reach_orientation[j]==1){
+                # Preset variables for inner loop
+                for(k in 1:length(joining_reaches)){
+                    if(reach_orientation[k]==0){
+                        # Make a polygon from the 2 xsections. To do this, flip
+                        # the order of the downstream reach xsection
+                        #counter=counter+1
+                        counter=counter+1
+                        rev_dn_coords=coords[[k]][ length(coords[[k]][,1]):1, 1:2]
+                        # Store as spatial_polygons
+                        junct_tmp_poly[[counter]]=SpatialPolygons( 
+                                                     list( Polygons( 
+                                                           list (Polygon( 
+                                                                 rbind(coords[[j]], 
+                                                                 rev_dn_coords, 
+                                                                 coords[[j]][1,1:2]))
+                                                           ), ID=as.character(counter))),
+                                                proj4string=CRS(proj4string(channel_cutlines)))       
+                    }
+
+                }
+
+            }
+        }
+        # Merge it into a single spatial polygon -- buffering to avoid topology exceptions
+        for(j in 1:length(junct_tmp_poly)){
+            if(j==1){
+                junct_tmp_polys[[i]]=gBuffer(junct_tmp_poly[[j]], width=0.)
+            }else{
+                #print(c(i,j))
+                junct_tmp_polys[[i]]=gUnion(junct_tmp_polys[[i]], gBuffer(junct_tmp_poly[[j]], width=0.))
+            }
+        }
+        # Store information on the first xsection in each junction, for later plotting
+        xsect_ind_store[i] = xsect_ind[1]
+        xsect_orientation_store=reach_orientation[1]
+
+    } # End loop over all junctions
+
+    # Now combine all the junctions into 1 spatial polygons object
+    all_polygons=list() #apply(junct_tmp_polys, getpol<-function(x) x[[1]])
+    for(i in 1:length(junct_tmp_polys)){
+            all_polygons[[i]]=junct_tmp_polys[[i]]@polygons[[1]]
+            all_polygons[[i]]@ID=as.character(i)
+    }
+    junct_polys=SpatialPolygons(all_polygons, proj4string=CRS(proj4string(channel_cutlines)))
+    junct_polys_df=SpatialPolygonsDataFrame(junct_polys, data=data.frame(junct_name=hec_lines[junct_starts], xsect_inds=xsect_ind_store, xsect_up_dn=xsect_orientation_store), match.ID=FALSE)
+    
+    return(junct_polys_df) 
+}
+
+###########################################################
 
 compute_centrelines<-function(hec_chan_file,spatial_proj){
     #@ Extract channel centrelines from hecras file

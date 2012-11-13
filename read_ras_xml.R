@@ -3,12 +3,14 @@
 ## This could potentially be used avoid the bugs in RAS-Mapper
 
 # Input vars
-ras_xml='test.O05.xml'
-ras_geo='test.g02'
+ras_xml='test.O04.xml'
+ras_geo='test.g01'
 #lidar_dem_file='C:/Users/Gareth/Documents/work/docs/Nov_2011_workshops/qgis/LIDAR_and_IMAGERY/DEM/10m_DEM/test2_10m.tif'
 lidar_dem_file='../../Nov_2011_workshops/qgis/LIDAR_and_IMAGERY/DEM/10m_DEM/test2_10m.tif'
+lidar_vertical_offset=10.5
 
 output_raster_file='water_surface.tif'
+output_depth_file='water_depth.tif'
 
 time='Max WS'
 
@@ -55,10 +57,14 @@ spatial_proj=dem@crs@projargs
 ####### Read Hecras .g0x geometric data
 
 print('Reading in ras geometry ...')
-
+library(rgeos)
 ras_storage=get_existing_storage_areas(ras_geo, spatial_proj)
 ras_xsections=make_channel_cutlines(ras_geo, spatial_proj)
 ras_chan_polygon=create_channel_polygon(ras_geo, CRS(spatial_proj))
+ras_junction_polygon=create_junction_polygon(ras_geo, ras_xsections)
+#stop()
+
+#FIXME: ADD CODE FOR 'create_junction_polygon'. Idea: Connect each upstream reach to every downstream reach individually, then union. This polygon can be the junction.
 
 # Extract reach/river/station from xsections -- as we will need this to 
 # ensure the order of xsections in the xml output file is the same as 
@@ -75,6 +81,7 @@ ras_xsect_station=sub(' +$', '', ras_xsect_station) # cut trailing whitespace
 c1=as.character(unlist(sa_name))
 c2=gsub(" ", "", as.character(ras_storage@data[,1]) )
 if(!all(c1==c2)){
+    print('Q: Do the .xml and the .gXX file correspond ??')
     stop('ERROR: Order of storage areas in xml and ras_geo appears to differ')
 }
 
@@ -84,12 +91,22 @@ if(!all(c1==c2)){
 xml_data=paste(xs_river, xs_reach, xs_riverstation)
 ras_geo_data=paste(ras_xsect_reach, ras_xsect_river, ras_xsect_station)
 
+if(length(xml_data)!=length(ras_geo_data)){
+    print('Q: Do the .xml and the .gXX file correspond ??')
+    print('They seem to have different numbers of xsections')
+    stop('ERROR: Problem in matching the xml indices with the ras_geo_data')
+}
+
 # Find re-ordering of xml_data to match ras_geo_data
 ras_xml_indices=unlist(lapply(ras_geo_data, function(x) which(xml_data == x) ))
 if(min(range(ras_xml_indices)!=1)){
+    print('Q: Do the .xml and the .gXX file correspond ??')
+    print(' I could not make a nicely behaved mapping between them')
     stop('ERROR: Problem in matching the xml indices with the ras_geo_data')
 }
-# Re-order data
+
+    
+# Re-order XML data
 xs_river=xs_river[ras_xml_indices]
 xs_reach=xs_reach[ras_xml_indices]
 xs_riverstation=xs_riverstation[ras_xml_indices]
@@ -102,7 +119,14 @@ sa_prof2=unlist(sa_profile)
 sa_we=as.numeric(sa_prof2[ names(sa_prof2)=='WSE' ])
 
 print('Burning storage areas into raster (progress bar can advance at a variable rate) ...')
-burn_rast=rasterize(ras_storage, burn_rast, sa_we, progress='text', update=FALSE)
+burn_rast=rasterize(ras_storage, burn_rast, sa_we, progress='text', update=TRUE)
+
+# Get junction water elevations into raster
+junct_we = water_surface_elevs[ ras_junction_polygon@data[,2] ]
+
+print('Burning junctions into raster (progress bar can advance at a variable rate) ...')
+burn_rast=rasterize(ras_junction_polygon, burn_rast, junct_we, progress='text', update=TRUE)
+
 
 print(' Getting points from the raster which are in the channel polygon ...')
 chan_cells=extract(dem, ras_chan_polygon, cellnumber=TRUE, small=TRUE)
@@ -117,7 +141,7 @@ elev_fun<-function(coords, reachname){
 
     # Get the water surface elevations for these xsections
     local_water_surface=water_surface_elevs[reach_xsection_inds]
-
+    #browser()
     
     # Make polygons of consecutive xsections for each reach
     reach_polys=list()
@@ -145,7 +169,7 @@ elev_fun<-function(coords, reachname){
     if(length(fixme)>0){
         reach_seg[fixme]=over(gBuffer(points_t2[fixme],width=sqrt(50.)/2.), poly_t2)
     }
-    
+    #browser()
     # Simple computation of water surface elevation
     output=(local_water_surface[reach_seg] + local_water_surface[reach_seg+1])/2
     #browser()
@@ -177,5 +201,16 @@ for(i in 1:length(chan_cells)){
 
 print('Writing the raster to a geotiff ...')
 writeRaster(burn_rast, output_raster_file,'GTiff', overwrite=TRUE) 
+
+print('Computing depth ...')
+depthfun<-function(water_level, dem){
+    depth=(water_level-(dem+ lidar_vertical_offset))
+    depth=depth*(depth>0.)
+    return(depth)
+}
+
+depthrast= overlay(burn_rast, dem, fun=depthfun)
+writeRaster(depthrast, output_depth_file, 'GTiff', overwrite=TRUE)
+
 
 print('Done <:)>')
