@@ -3,14 +3,14 @@
 ## This could potentially be used avoid the bugs in RAS-Mapper
 
 # Input vars
-ras_xml='test.O04.xml'
-ras_geo='test.g01'
+ras_xml='pasig_sanjuan.O11.xml'#'test.O04.xml'
+ras_geo='pasig_sanjuan.g18' #'test.g01'
 #lidar_dem_file='C:/Users/Gareth/Documents/work/docs/Nov_2011_workshops/qgis/LIDAR_and_IMAGERY/DEM/10m_DEM/test2_10m.tif'
 lidar_dem_file='../../Nov_2011_workshops/qgis/LIDAR_and_IMAGERY/DEM/10m_DEM/test2_10m.tif'
 lidar_vertical_offset=10.5
 
-output_raster_file='water_surface.tif'
-output_depth_file='water_depth.tif'
+output_raster_file='water_surface_pasig3.tif'
+output_depth_file='water_depth_pasig3.tif'
 
 time='Max WS'
 
@@ -188,16 +188,22 @@ elev_fun<-function(coords, reachname){
 
 # Burn each channel into the raster
 reach_names=as.character(unique(ras_xsections@data$reach))
+reach_xyz=c()
 for(i in 1:length(chan_cells)){
-    print(paste('Burning channel ', i))
+    print(paste('Computing channel ', i))
     reach_name=reach_names[i]
     coords=xyFromCell(dem, chan_cells[[i]][,1])
     #burn_rast[chan_cells[[i]][,1]] = elev_fun(chan_cells[[i]][,1], reach_name)
-    burn_rast = rasterize(coords, burn_rast, elev_fun(coords, reach_name), update=TRUE)
-    gc()
+    coords_z=elev_fun(coords, reach_name)
+    reach_xyz=rbind(reach_xyz, cbind(coords, coords_z))
 }
+print('Burning channel into raster')
+burn_rast = rasterize(reach_xyz[,1:2], burn_rast, reach_xyz[,3], update=TRUE, progress='text')
+gc()
 
-
+# Here, we really need to add a gdal_fillnodata.py water_buf.tif -md 2
+# out_buf.tif to clean things up.  Alternatively, can do this later in batch,
+# followed by batch gdal_calc.py to do the subtraction
 
 print('Writing the raster to a geotiff ...')
 writeRaster(burn_rast, output_raster_file,'GTiff', overwrite=TRUE) 
