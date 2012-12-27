@@ -3,14 +3,14 @@
 ## This could potentially be used avoid the bugs in RAS-Mapper
 
 # Input vars
-ras_xml='pasig_sanjuan.O11.xml'#'test.O04.xml'
-ras_geo='pasig_sanjuan.g18' #'test.g01'
+ras_xml='test.o01.xml' #'pasig_sanjuan.O12.xml'#'test.O04.xml'
+ras_geo='test.g02' #'pasig_sanjuan.g03' #'test.g01'
 #lidar_dem_file='C:/Users/Gareth/Documents/work/docs/Nov_2011_workshops/qgis/LIDAR_and_IMAGERY/DEM/10m_DEM/test2_10m.tif'
 lidar_dem_file='../../Nov_2011_workshops/qgis/LIDAR_and_IMAGERY/DEM/10m_DEM/test2_10m.tif'
 lidar_vertical_offset=10.5
 
-output_raster_file='water_surface_pasig3.tif'
-output_depth_file='water_depth_pasig3.tif'
+output_raster_file='water_surface_marikina4.tif'
+output_depth_file='water_depth_marikina4.tif'
 
 time='Max WS'
 
@@ -81,6 +81,7 @@ ras_xsect_station=sub(' +$', '', ras_xsect_station) # cut trailing whitespace
 c1=as.character(unlist(sa_name))
 c2=gsub(" ", "", as.character(ras_storage@data[,1]) )
 if(!all(c1==c2)){
+    print('ERROR:')
     print('Q: Do the .xml and the .gXX file correspond ??')
     stop('ERROR: Order of storage areas in xml and ras_geo appears to differ')
 }

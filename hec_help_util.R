@@ -744,8 +744,16 @@ make_channel_cutlines<-function(hec_chan_file, spatial_proj){
     cutline_start=grep('XS GIS Cut Line', hec_lines)+1
     cutline_end=grep('#Sta', hec_lines)-2
 
+    if(length(cutline_start)!=length(cutline_end)){
+
+        stop('ERROR: Cannot identify xsection cutlines. Make sure all xsections are georeferenced')
+    }
+
+    #browser()
     lines_list=list()
     for(i in 1:length(cutline_start)){
+        #print('XX')
+        #print(hec_lines[cutline_start[i]:cutline_end[i]])
         cutline=split_nchars_numeric(hec_lines[cutline_start[i]:cutline_end[i]], 16)
         cutline_2=matrix(cutline,byrow=T,ncol=2)
 
